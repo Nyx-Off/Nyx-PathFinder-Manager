@@ -1,17 +1,302 @@
-import {modal,field,select,textarea,submit} from './modal.js';
-import {attributes,ranks} from './catalog.js';
-import {escape as e} from './api.js';
-const skillAttributes={'Acrobaties':'dex','Arcanes':'int','Athlétisme':'str','Artisanat':'int','Diplomatie':'cha','Discrétion':'dex','Intimidation':'cha','Médecine':'wis','Nature':'wis','Occultisme':'int','Religion':'wis','Représentation':'cha','Société':'int','Survie':'wis','Tromperie':'cha','Vol':'dex','Perception':'wis','Vigueur':'con','Réflexes':'dex','Volonté':'wis','Armure':'dex','Attaque':'str','Sorts':'int','Classe':'str'};
-export function createWizard(create){
- const entryRows=(prefix,labels)=>[0,1,2].map(i=>`<fieldset class="wide"><legend>${labels[0]} ${i+1}</legend><div class="form-grid">${field('Nom',`${prefix}_name_${i}`)}${labels[1](i)}</div></fieldset>`).join('');
- const steps=[['Votre héros',field('Nom','name','','text','required maxlength="190"')+field('Joueur','player')+field('Campagne','campaign')+field('Niveau de départ','level',1,'number','min="1" max="20"')],['Ascendance',field('Ascendance','ancestry')+field('PV d’ascendance','ancestry_hp',8,'number','min="1" max="100"')],['Héritage',field('Héritage','heritage')],['Historique',field('Historique','background')],['Classe',field('Classe','class')+field('PV par niveau de classe','class_hp',8,'number','min="1" max="100"')+select('Attribut clé','key_attribute',attributes,'str')+select('Attribut d’incantation','spell_attribute',attributes,'int')],['Attributs',`<p class="muted wide">Composez les boosts par étape. Un même attribut ne reçoit qu’un boost par étape. L’option d’ascendance alternative utilise deux boosts libres. Vérifiez les choix restreints de votre historique et de votre classe dans vos règles. À partir de +4, deux boosts augmentent le modificateur de 1.</p><div class="wide" id="boost-builder">${[['ancestry','Ascendance : deux boosts libres',2],['background','Historique : deux boosts (dont le choix restreint)',2],['class','Classe : attribut clé',1],['free','Quatre boosts libres',4]].map(([key,label,count])=>`<fieldset><legend>${label}</legend>${Object.entries(attributes).map(([a,label])=>`<label class="check"><input type="checkbox" data-boost-stage="${key}" data-boost-attribute="${a}" data-max="${count}">${e(label)}</label>`).join('')}</fieldset>`).join('')}</div><button type="button" id="apply-boosts" class="wide">Appliquer les boosts sélectionnés</button><p class="muted wide">Les modificateurs finaux ci-dessous restent ajustables pour les options d’ascendance, défauts ou variantes.</p>`+Object.entries(attributes).map(([k,v])=>field(v,k,0,'number','min="-5" max="10"')).join('')],['Compétences',`<p class="wide muted">Sélectionnez les maîtrises accordées par la classe, l’historique et l’Intelligence. Le quota dépend de vos choix de règles.</p>`+Object.entries(skillAttributes).map(([name])=>select(name,'skill_'+name,ranks,0)).join('')],['Dons',`<p class="wide muted">Ajoutez jusqu’à trois dons de départ ici, puis complétez librement sur la fiche.</p>`+entryRows('feat',['Don',i=>select('Catégorie','feat_category_'+i,{ancestry:'Ascendance',class:'Classe',skill:'Compétence',general:'Général',archetype:'Archétype'})+textarea('Résumé personnel','feat_description_'+i)])],['Équipement',entryRows('item',['Objet',i=>select('Catégorie','item_type_'+i,{divers:'Divers',arme:'Arme',armure:'Armure',bouclier:'Bouclier',consommable:'Consommable',outil:'Outil'})+field('Quantité','item_quantity_'+i,1,'number','min="1"')+field('Encombrement unitaire','item_bulk_'+i,0,'number','min="0" step="0.1"')])+field('Argent initial en pièces de cuivre','copper',1500,'number','min="0"')],['Sorts',entryRows('spell',['Sort',i=>field('Rang','spell_rank_'+i,1,'number','min="0" max="10"')+select('Incantation','spell_casting_'+i,{prepared:'Préparé',spontaneous:'Spontané',cantrip:'Tour de magie',focus:'Focus',innate:'Inné'})+select('Tradition','spell_tradition_'+i,{arcane:'Arcane',divine:'Divine',occult:'Occulte',primal:'Primordiale'})])+field('Emplacements de rang 1','slots',0,'number','min="0" max="20"')],['Résumé',`<p>Les choix ci-dessous seront enregistrés ensemble. Vous pourrez ensuite ajuster les détails des armes, armures et sorts dans leurs onglets.</p><div id="wizard-review"></div>`]];
- modal('Créer un personnage',`<form id="wizard"><div class="step-count"></div>${steps.map(([title,html],i)=>`<section class="step ${i===0?'active':''}"><h3>${title}</h3><div class="form-grid">${html}</div></section>`).join('')}<div class="toolbar form-actions"><button type="button" id="previous">← Retour</button><button type="button" id="next" class="primary">Continuer →</button><button type="submit" id="finish" class="primary" hidden>Créer le personnage</button></div></form>`,async fd=>{
-  const data=Object.fromEntries(fd);data.attributes=Object.fromEntries(Object.keys(attributes).map(k=>[k,Number(fd.get(k))]));data.skills=Object.entries(skillAttributes).map(([name,attribute])=>({name,attribute,rank:Number(fd.get('skill_'+name)),misc:0}));data.entries=[];
-  for(let i=0;i<3;i++){if(fd.get('feat_name_'+i))data.entries.push({collection:'feats',name:fd.get('feat_name_'+i),data:{level:1,category:fd.get('feat_category_'+i),description:fd.get('feat_description_'+i)}});if(fd.get('item_name_'+i))data.entries.push({collection:'items',name:fd.get('item_name_'+i),data:{type:fd.get('item_type_'+i),quantity:Number(fd.get('item_quantity_'+i)),bulk:Number(fd.get('item_bulk_'+i)),equipped:false}});if(fd.get('spell_name_'+i))data.entries.push({collection:'spells',name:fd.get('spell_name_'+i),data:{spell_rank:Number(fd.get('spell_rank_'+i)),casting:fd.get('spell_casting_'+i),tradition:fd.get('spell_tradition_'+i),used:false}});}
-  if(Number(fd.get('slots'))>0)data.entries.push({collection:'spell_slots',name:'Rang 1',data:{spell_rank:1,current:Number(fd.get('slots')),max:Number(fd.get('slots'))}});await create(data);
- });
- let step=0;const form=document.querySelector('#wizard');const render=()=>{form.querySelectorAll('.step').forEach((el,i)=>el.classList.toggle('active',i===step));form.querySelector('.step-count').textContent=`ÉTAPE ${step+1} / ${steps.length}`;form.querySelector('#previous').disabled=step===0;form.querySelector('#next').hidden=step===steps.length-1;form.querySelector('#finish').hidden=step!==steps.length-1;if(step===steps.length-1){const fd=new FormData(form);form.querySelector('#wizard-review').innerHTML=`<h3>${e(fd.get('name'))}</h3><p>${e(fd.get('ancestry'))} · ${e(fd.get('class'))} · Niveau ${e(fd.get('level'))}</p><p>${Object.entries(attributes).map(([k,v])=>e(v)+' '+e(fd.get(k))).join(' · ')}</p><p>${[...fd.entries()].filter(([k,v])=>k.startsWith('skill_')&&Number(v)>0).map(([k,v])=>e(k.slice(6))+' : '+ranks[v]).join(', ')}</p>`;}};
- form.querySelector('#apply-boosts').onclick=()=>{for(const k of Object.keys(attributes))form.elements[k].value=0;form.querySelectorAll('[data-boost-stage]:checked').forEach(el=>form.elements[el.dataset.boostAttribute].value=Number(form.elements[el.dataset.boostAttribute].value)+1);};
- form.querySelectorAll('[data-boost-stage]').forEach(el=>el.onchange=()=>{const selected=form.querySelectorAll(`[data-boost-stage="${el.dataset.boostStage}"]:checked`);if(selected.length>Number(el.dataset.max))el.checked=false;});
- form.querySelector('#next').onclick=()=>{const fields=[...form.querySelectorAll('.step.active input,.step.active select')];if(fields.every(el=>el.reportValidity())){step++;render();}};form.querySelector('#previous').onclick=()=>{step--;render();};render();
+import { modal, field, select, textarea, submit } from "./modal.js";
+import { attributes, ranks } from "./catalog.js";
+import { escape as e } from "./api.js";
+const skillAttributes = {
+  Acrobaties: "dex",
+  Arcanes: "int",
+  Athlétisme: "str",
+  Artisanat: "int",
+  Diplomatie: "cha",
+  Discrétion: "dex",
+  Intimidation: "cha",
+  Médecine: "wis",
+  Nature: "wis",
+  Occultisme: "int",
+  Religion: "wis",
+  Représentation: "cha",
+  Société: "int",
+  Survie: "wis",
+  Tromperie: "cha",
+  Vol: "dex",
+  Perception: "wis",
+  Vigueur: "con",
+  Réflexes: "dex",
+  Volonté: "wis",
+  Armure: "dex",
+  Attaque: "str",
+  Sorts: "int",
+  Classe: "str",
+};
+export function createWizard(create) {
+  const entryRows = (prefix, labels) =>
+    [0, 1, 2]
+      .map(
+        (i) =>
+          `<fieldset class="wide"><legend>${labels[0]} ${i + 1}</legend><div class="form-grid">${field("Nom", `${prefix}_name_${i}`)}${labels[1](i)}</div></fieldset>`,
+      )
+      .join("");
+  const steps = [
+    [
+      "Votre héros",
+      field("Nom", "name", "", "text", 'required maxlength="190"') +
+        field("Joueur", "player") +
+        field("Campagne", "campaign") +
+        field("Niveau de départ", "level", 1, "number", 'min="1" max="20"'),
+    ],
+    [
+      "Ascendance",
+      field("Ascendance", "ancestry") +
+        field(
+          "PV d’ascendance",
+          "ancestry_hp",
+          8,
+          "number",
+          'min="1" max="100"',
+        ),
+    ],
+    ["Héritage", field("Héritage", "heritage")],
+    ["Historique", field("Historique", "background")],
+    [
+      "Classe",
+      field("Classe", "class") +
+        field(
+          "PV par niveau de classe",
+          "class_hp",
+          8,
+          "number",
+          'min="1" max="100"',
+        ) +
+        select("Attribut clé", "key_attribute", attributes, "str") +
+        select("Attribut d’incantation", "spell_attribute", attributes, "int"),
+    ],
+    [
+      "Attributs",
+      `<p class="muted wide">Composez les boosts par étape. Un même attribut ne reçoit qu’un boost par étape. L’option d’ascendance alternative utilise deux boosts libres. Vérifiez les choix restreints de votre historique et de votre classe dans vos règles. À partir de +4, deux boosts augmentent le modificateur de 1.</p><div class="wide" id="boost-builder">${[
+        ["ancestry", "Ascendance : deux boosts libres", 2],
+        ["background", "Historique : deux boosts (dont le choix restreint)", 2],
+        ["class", "Classe : attribut clé", 1],
+        ["free", "Quatre boosts libres", 4],
+      ]
+        .map(
+          ([key, label, count]) =>
+            `<fieldset><legend>${label}</legend>${Object.entries(attributes)
+              .map(
+                ([a, label]) =>
+                  `<label class="check"><input type="checkbox" data-boost-stage="${key}" data-boost-attribute="${a}" data-max="${count}">${e(label)}</label>`,
+              )
+              .join("")}</fieldset>`,
+        )
+        .join(
+          "",
+        )}</div><button type="button" id="apply-boosts" class="wide">Appliquer les boosts sélectionnés</button><p class="muted wide">Les modificateurs finaux ci-dessous restent ajustables pour les options d’ascendance, défauts ou variantes.</p>` +
+        Object.entries(attributes)
+          .map(([k, v]) => field(v, k, 0, "number", 'min="-5" max="10"'))
+          .join(""),
+    ],
+    [
+      "Compétences",
+      `<p class="wide muted">Sélectionnez les maîtrises accordées par la classe, l’historique et l’Intelligence. Le quota dépend de vos choix de règles.</p>` +
+        Object.entries(skillAttributes)
+          .map(([name]) => select(name, "skill_" + name, ranks, 0))
+          .join(""),
+    ],
+    [
+      "Dons",
+      `<p class="wide muted">Ajoutez jusqu’à trois dons de départ ici, puis complétez librement sur la fiche.</p>` +
+        entryRows("feat", [
+          "Don",
+          (i) =>
+            select("Catégorie", "feat_category_" + i, {
+              ancestry: "Ascendance",
+              class: "Classe",
+              skill: "Compétence",
+              general: "Général",
+              archetype: "Archétype",
+            }) + textarea("Résumé personnel", "feat_description_" + i),
+        ]),
+    ],
+    [
+      "Équipement",
+      entryRows("item", [
+        "Objet",
+        (i) =>
+          select("Catégorie", "item_type_" + i, {
+            divers: "Divers",
+            arme: "Arme",
+            armure: "Armure",
+            bouclier: "Bouclier",
+            consommable: "Consommable",
+            outil: "Outil",
+          }) +
+          field("Quantité", "item_quantity_" + i, 1, "number", 'min="1"') +
+          field(
+            "Encombrement unitaire",
+            "item_bulk_" + i,
+            0,
+            "number",
+            'min="0" step="0.1"',
+          ),
+      ]) +
+        field(
+          "Argent initial en pièces de cuivre",
+          "copper",
+          1500,
+          "number",
+          'min="0"',
+        ),
+    ],
+    [
+      "Sorts",
+      entryRows("spell", [
+        "Sort",
+        (i) =>
+          field("Rang", "spell_rank_" + i, 1, "number", 'min="0" max="10"') +
+          select("Incantation", "spell_casting_" + i, {
+            prepared: "Préparé",
+            spontaneous: "Spontané",
+            cantrip: "Tour de magie",
+            focus: "Focus",
+            innate: "Inné",
+          }) +
+          select("Tradition", "spell_tradition_" + i, {
+            arcane: "Arcane",
+            divine: "Divine",
+            occult: "Occulte",
+            primal: "Primordiale",
+          }),
+      ]) +
+        field(
+          "Emplacements de rang 1",
+          "slots",
+          0,
+          "number",
+          'min="0" max="20"',
+        ),
+    ],
+    [
+      "Résumé",
+      `<p>Les choix ci-dessous seront enregistrés ensemble. Vous pourrez ensuite ajuster les détails des armes, armures et sorts dans leurs onglets.</p><div id="wizard-review"></div>`,
+    ],
+  ];
+  modal(
+    "Créer un personnage",
+    `<form id="wizard"><div class="step-count"></div>${steps.map(([title, html], i) => `<section class="step ${i === 0 ? "active" : ""}"><h3>${title}</h3><div class="form-grid">${html}</div></section>`).join("")}<div class="toolbar form-actions"><button type="button" id="previous">← Retour</button><button type="button" id="next" class="primary">Continuer →</button><button type="submit" id="finish" class="primary" hidden>Créer le personnage</button></div></form>`,
+    async (fd) => {
+      const data = Object.fromEntries(fd);
+      data.attributes = Object.fromEntries(
+        Object.keys(attributes).map((k) => [k, Number(fd.get(k))]),
+      );
+      data.skills = Object.entries(skillAttributes).map(
+        ([name, attribute]) => ({
+          name,
+          attribute,
+          rank: Number(fd.get("skill_" + name)),
+          misc: 0,
+        }),
+      );
+      data.entries = [];
+      for (let i = 0; i < 3; i++) {
+        if (fd.get("feat_name_" + i))
+          data.entries.push({
+            collection: "feats",
+            name: fd.get("feat_name_" + i),
+            data: {
+              level: 1,
+              category: fd.get("feat_category_" + i),
+              description: fd.get("feat_description_" + i),
+            },
+          });
+        if (fd.get("item_name_" + i))
+          data.entries.push({
+            collection: "items",
+            name: fd.get("item_name_" + i),
+            data: {
+              type: fd.get("item_type_" + i),
+              quantity: Number(fd.get("item_quantity_" + i)),
+              bulk: Number(fd.get("item_bulk_" + i)),
+              equipped: false,
+            },
+          });
+        if (fd.get("spell_name_" + i))
+          data.entries.push({
+            collection: "spells",
+            name: fd.get("spell_name_" + i),
+            data: {
+              spell_rank: Number(fd.get("spell_rank_" + i)),
+              casting: fd.get("spell_casting_" + i),
+              tradition: fd.get("spell_tradition_" + i),
+              used: false,
+            },
+          });
+      }
+      if (Number(fd.get("slots")) > 0)
+        data.entries.push({
+          collection: "spell_slots",
+          name: "Rang 1",
+          data: {
+            spell_rank: 1,
+            current: Number(fd.get("slots")),
+            max: Number(fd.get("slots")),
+          },
+        });
+      await create(data);
+    },
+  );
+  let step = 0;
+  const form = document.querySelector("#wizard");
+  const render = () => {
+    form
+      .querySelectorAll(".step")
+      .forEach((el, i) => el.classList.toggle("active", i === step));
+    form.querySelector(".step-count").textContent =
+      `ÉTAPE ${step + 1} / ${steps.length}`;
+    form.querySelector("#previous").disabled = step === 0;
+    form.querySelector("#next").hidden = step === steps.length - 1;
+    form.querySelector("#finish").hidden = step !== steps.length - 1;
+    if (step === steps.length - 1) {
+      const fd = new FormData(form);
+      form.querySelector("#wizard-review").innerHTML =
+        `<h3>${e(fd.get("name"))}</h3><p>${e(fd.get("ancestry"))} · ${e(fd.get("class"))} · Niveau ${e(fd.get("level"))}</p><p>${Object.entries(
+          attributes,
+        )
+          .map(([k, v]) => e(v) + " " + e(fd.get(k)))
+          .join(" · ")}</p><p>${[...fd.entries()]
+          .filter(([k, v]) => k.startsWith("skill_") && Number(v) > 0)
+          .map(([k, v]) => e(k.slice(6)) + " : " + ranks[v])
+          .join(", ")}</p>`;
+    }
+  };
+  form.querySelector("#apply-boosts").onclick = () => {
+    for (const k of Object.keys(attributes)) form.elements[k].value = 0;
+    form
+      .querySelectorAll("[data-boost-stage]:checked")
+      .forEach(
+        (el) =>
+          (form.elements[el.dataset.boostAttribute].value =
+            Number(form.elements[el.dataset.boostAttribute].value) + 1),
+      );
+  };
+  form.querySelectorAll("[data-boost-stage]").forEach(
+    (el) =>
+      (el.onchange = () => {
+        const selected = form.querySelectorAll(
+          `[data-boost-stage="${el.dataset.boostStage}"]:checked`,
+        );
+        if (selected.length > Number(el.dataset.max)) el.checked = false;
+      }),
+  );
+  form.querySelector("#next").onclick = () => {
+    const fields = [
+      ...form.querySelectorAll(".step.active input,.step.active select"),
+    ];
+    if (fields.every((el) => el.reportValidity())) {
+      step++;
+      render();
+    }
+  };
+  form.querySelector("#previous").onclick = () => {
+    step--;
+    render();
+  };
+  render();
 }

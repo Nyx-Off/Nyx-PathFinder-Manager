@@ -1,13 +1,121 @@
-import {modal,field,select,textarea,submit} from './modal.js';
-import {attributes,ranks} from './catalog.js';
-import {escape as e} from './api.js';
-export function levelUp(c,save){const next=Number(c.level)+1;const boosts=[5,10,15,20].includes(next);modal(`Montée au niveau ${next}`,`<form class="form-grid"><p class="wide warning">PV et bonus de niveau sont recalculés. Choisissez ci-dessous les améliorations prévues par votre classe. Le catalogue ne vérifie pas tous les prérequis et quotas des classes.</p><p class="wide">Gain de base : ${Number(c.class_hp)+c.computed.attributes.con} PV ; un boost de Constitution réévalue également les niveaux précédents.</p>${boosts?`<fieldset class="wide"><legend>Jusqu’à quatre boosts différents</legend>${Object.entries(attributes).map(([k,v])=>`<label class="check"><input type="checkbox" name="boosts" value="${k}">${e(v)} (${c.computed.attributes[k]>=4?'boost partiel à +4 ou plus':'+1'})</label>`).join('')}</fieldset>`:''}<details class="wide"><summary>Maîtrises : choisir les augmentations</summary><div class="form-grid">${c.skills.map(s=>select(s.name,'skill_'+s.id,ranks,s.rank)).join('')}</div></details><fieldset class="wide"><legend>Nouveau don (optionnel)</legend><div class="form-grid">${field('Nom du don','feat_name')}${select('Catégorie','feat_category',{class:'Classe',skill:'Compétence',general:'Général',ancestry:'Ascendance',archetype:'Archétype'})}${textarea('Résumé du don','feat_description')}</div></fieldset><fieldset class="wide"><legend>Nouvelle capacité (optionnel)</legend>${field('Nom de la capacité','ability_name')}${textarea('Description','ability_description')}</fieldset><fieldset class="wide"><legend>Nouveau sort (optionnel)</legend><div class="form-grid">${field('Nom du sort','spell_name')}${field('Rang','spell_rank',Math.ceil(next/2),'number','min="0" max="10"')}${select('Incantation','spell_casting',{prepared:'Préparé',spontaneous:'Spontané',cantrip:'Tour de magie',focus:'Focus',innate:'Inné'})}${select('Tradition','spell_tradition',{arcane:'Arcane',divine:'Divine',occult:'Occulte',primal:'Primordiale'})}</div></fieldset><details class="wide"><summary>Emplacements : ajuster les maxima</summary><div class="form-grid">${c.spell_slots.map(s=>field(s.name,'slot_'+s.id,s.data.max,'number','min="0" max="100"')).join('')}${field('Nouveaux emplacements (quantité)','new_slots',0,'number','min="0" max="100"')}${field('Rang des nouveaux emplacements','new_rank',Math.ceil(next/2),'number','min="1" max="10"')}</div></details>${textarea('Autres choix du niveau et références','choices')}<label class="check wide"><input name="spend_xp" type="checkbox" ${!c.milestone&&c.xp>=c.xp_target?'checked':''}>Retirer ${c.xp_target} XP (sans descendre sous zéro)</label><p class="wide muted">L’état précédent est conservé et exportable. Vous pourrez le réimporter comme personnage distinct.</p>${submit}</form>`,fd=>{
- const skills=c.skills.filter(s=>Number(fd.get('skill_'+s.id))!==s.rank).map(s=>({name:s.name,attribute:s.attribute,rank:Number(fd.get('skill_'+s.id)),misc:s.misc}));const entries=[];
- if(fd.get('feat_name'))entries.push({collection:'feats',name:fd.get('feat_name'),data:{category:fd.get('feat_category'),level:next,description:fd.get('feat_description')}});
- if(fd.get('ability_name'))entries.push({collection:'abilities',name:fd.get('ability_name'),data:{category:'class',description:fd.get('ability_description')}});
- if(fd.get('spell_name'))entries.push({collection:'spells',name:fd.get('spell_name'),data:{spell_rank:Number(fd.get('spell_rank')),casting:fd.get('spell_casting'),tradition:fd.get('spell_tradition'),used:false}});
- for(const s of c.spell_slots){const max=Number(fd.get('slot_'+s.id));if(max!==s.data.max)entries.push({collection:'spell_slots',entry_id:s.id,name:s.name,data:{...s.data,max,current:Math.min(max,s.data.current+Math.max(0,max-s.data.max))}});}
- if(Number(fd.get('new_slots'))>0)entries.push({collection:'spell_slots',name:'Rang '+fd.get('new_rank'),data:{spell_rank:Number(fd.get('new_rank')),current:Number(fd.get('new_slots')),max:Number(fd.get('new_slots'))}});
- return save('level_up',{boosts:fd.getAll('boosts'),choices:fd.get('choices'),spend_xp:fd.has('spend_xp'),skills,entries});
- });}
-export function rest(c,save){const heal=Math.max(1,c.computed.attributes.con)*c.level;modal('Préparer le repos',`<form><p>Sélectionnez précisément les récupérations à appliquer.</p>${[['hp',`Repos nocturne : +${heal} PV, au maximum ${c.computed.hp_max}`],['focus',`Focus : restaurer à ${c.focus_max} (selon le temps de refocalisation)`],['slots','Tous les emplacements : disponibles au maximum'],['spells','Retirer les marques « utilisé » des sorts'],['resources','Ressources configurées pour récupération journalière'],['temporary','Effacer les PV temporaires']].map(([k,label])=>`<label class="check"><input type="checkbox" name="${k}">${e(label)}</label>`).join('')}${submit}</form>`,fd=>save('rest',Object.fromEntries([...fd.keys()].map(k=>[k,true]))));}
+import { modal, field, select, textarea, submit } from "./modal.js";
+import { attributes, ranks } from "./catalog.js";
+import { escape as e } from "./api.js";
+export function levelUp(c, save) {
+  const next = Number(c.level) + 1;
+  const boosts = [5, 10, 15, 20].includes(next);
+  modal(
+    `Montée au niveau ${next}`,
+    `<form class="form-grid"><p class="wide warning">PV et bonus de niveau sont recalculés. Choisissez ci-dessous les améliorations prévues par votre classe. Le catalogue ne vérifie pas tous les prérequis et quotas des classes.</p><p class="wide">Gain de base : ${Number(c.class_hp) + c.computed.attributes.con} PV ; un boost de Constitution réévalue également les niveaux précédents.</p>${
+      boosts
+        ? `<fieldset class="wide"><legend>Jusqu’à quatre boosts différents</legend>${Object.entries(
+            attributes,
+          )
+            .map(
+              ([k, v]) =>
+                `<label class="check"><input type="checkbox" name="boosts" value="${k}">${e(v)} (${c.computed.attributes[k] >= 4 ? "boost partiel à +4 ou plus" : "+1"})</label>`,
+            )
+            .join("")}</fieldset>`
+        : ""
+    }<details class="wide"><summary>Maîtrises : choisir les augmentations</summary><div class="form-grid">${c.skills.map((s) => select(s.name, "skill_" + s.id, ranks, s.rank)).join("")}</div></details><fieldset class="wide"><legend>Nouveau don (optionnel)</legend><div class="form-grid">${field("Nom du don", "feat_name")}${select("Catégorie", "feat_category", { class: "Classe", skill: "Compétence", general: "Général", ancestry: "Ascendance", archetype: "Archétype" })}${textarea("Résumé du don", "feat_description")}</div></fieldset><fieldset class="wide"><legend>Nouvelle capacité (optionnel)</legend>${field("Nom de la capacité", "ability_name")}${textarea("Description", "ability_description")}</fieldset><fieldset class="wide"><legend>Nouveau sort (optionnel)</legend><div class="form-grid">${field("Nom du sort", "spell_name")}${field("Rang", "spell_rank", Math.ceil(next / 2), "number", 'min="0" max="10"')}${select("Incantation", "spell_casting", { prepared: "Préparé", spontaneous: "Spontané", cantrip: "Tour de magie", focus: "Focus", innate: "Inné" })}${select("Tradition", "spell_tradition", { arcane: "Arcane", divine: "Divine", occult: "Occulte", primal: "Primordiale" })}</div></fieldset><details class="wide"><summary>Emplacements : ajuster les maxima</summary><div class="form-grid">${c.spell_slots.map((s) => field(s.name, "slot_" + s.id, s.data.max, "number", 'min="0" max="100"')).join("")}${field("Nouveaux emplacements (quantité)", "new_slots", 0, "number", 'min="0" max="100"')}${field("Rang des nouveaux emplacements", "new_rank", Math.ceil(next / 2), "number", 'min="1" max="10"')}</div></details>${textarea("Autres choix du niveau et références", "choices")}<label class="check wide"><input name="spend_xp" type="checkbox" ${!c.milestone && c.xp >= c.xp_target ? "checked" : ""}>Retirer ${c.xp_target} XP (sans descendre sous zéro)</label><p class="wide muted">L’état précédent est conservé et exportable. Vous pourrez le réimporter comme personnage distinct.</p>${submit}</form>`,
+    (fd) => {
+      const skills = c.skills
+        .filter((s) => Number(fd.get("skill_" + s.id)) !== s.rank)
+        .map((s) => ({
+          name: s.name,
+          attribute: s.attribute,
+          rank: Number(fd.get("skill_" + s.id)),
+          misc: s.misc,
+        }));
+      const entries = [];
+      if (fd.get("feat_name"))
+        entries.push({
+          collection: "feats",
+          name: fd.get("feat_name"),
+          data: {
+            category: fd.get("feat_category"),
+            level: next,
+            description: fd.get("feat_description"),
+          },
+        });
+      if (fd.get("ability_name"))
+        entries.push({
+          collection: "abilities",
+          name: fd.get("ability_name"),
+          data: {
+            category: "class",
+            description: fd.get("ability_description"),
+          },
+        });
+      if (fd.get("spell_name"))
+        entries.push({
+          collection: "spells",
+          name: fd.get("spell_name"),
+          data: {
+            spell_rank: Number(fd.get("spell_rank")),
+            casting: fd.get("spell_casting"),
+            tradition: fd.get("spell_tradition"),
+            used: false,
+          },
+        });
+      for (const s of c.spell_slots) {
+        const max = Number(fd.get("slot_" + s.id));
+        if (max !== s.data.max)
+          entries.push({
+            collection: "spell_slots",
+            entry_id: s.id,
+            name: s.name,
+            data: {
+              ...s.data,
+              max,
+              current: Math.min(
+                max,
+                s.data.current + Math.max(0, max - s.data.max),
+              ),
+            },
+          });
+      }
+      if (Number(fd.get("new_slots")) > 0)
+        entries.push({
+          collection: "spell_slots",
+          name: "Rang " + fd.get("new_rank"),
+          data: {
+            spell_rank: Number(fd.get("new_rank")),
+            current: Number(fd.get("new_slots")),
+            max: Number(fd.get("new_slots")),
+          },
+        });
+      return save("level_up", {
+        boosts: fd.getAll("boosts"),
+        choices: fd.get("choices"),
+        spend_xp: fd.has("spend_xp"),
+        skills,
+        entries,
+      });
+    },
+  );
+}
+export function rest(c, save) {
+  const heal = Math.max(1, c.computed.attributes.con) * c.level;
+  modal(
+    "Préparer le repos",
+    `<form><p>Sélectionnez précisément les récupérations à appliquer.</p>${[
+      ["hp", `Repos nocturne : +${heal} PV, au maximum ${c.computed.hp_max}`],
+      [
+        "focus",
+        `Focus : restaurer à ${c.focus_max} (selon le temps de refocalisation)`,
+      ],
+      ["slots", "Tous les emplacements : disponibles au maximum"],
+      ["spells", "Retirer les marques « utilisé » des sorts"],
+      ["resources", "Ressources configurées pour récupération journalière"],
+      ["temporary", "Effacer les PV temporaires"],
+    ]
+      .map(
+        ([k, label]) =>
+          `<label class="check"><input type="checkbox" name="${k}">${e(label)}</label>`,
+      )
+      .join("")}${submit}</form>`,
+    (fd) =>
+      save("rest", Object.fromEntries([...fd.keys()].map((k) => [k, true]))),
+  );
+}

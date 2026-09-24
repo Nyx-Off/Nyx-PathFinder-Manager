@@ -1,64 +1,460 @@
-import {api,csrf,escape as e,toast} from './api.js';
-import {modal,field,select,textarea,submit} from './modal.js';
-import {attributes,ranks,tabs} from './catalog.js';
-import {sheet,tabContent} from './sheet.js';
-import {editEntry} from './collections.js';
-import {createWizard} from './wizard.js';
-import {levelUp,rest} from './progression.js';
-const app=document.querySelector('#app');let character=null,tab='summary',busy=false;
-async function save(action,data){if(busy)throw Error('Enregistrement en cours.');busy=true;try{character=await api(action,character.id,{...data,revision:character.revision});render();}finally{busy=false;}}
-function render(){app.innerHTML=sheet(character,tab);document.querySelector('#sheet-nav').innerHTML=Object.entries(tabs).map(([k,v])=>`<button class="nav ${tab===k?'active':''}" data-tab="${k}">${e(v)}</button>`).join('');}
-async function open(id){character=await api('',id);tab='summary';location.hash='character/'+id;render();}
-async function home(){character=null;location.hash='';document.body.classList.remove('combat');document.querySelector('#sheet-nav').innerHTML='';const all=await api();const visible=all.filter(c=>!c.archived);app.innerHTML=`<div class="heading"><div><p class="eyebrow">VOTRE TABLE D’AVENTURE</p><h1>Mes personnages</h1><p class="muted">Retrouvez vos héros. Écrivez la suite de leur histoire.</p></div><div class="toolbar"><button data-import>↑ Importer</button><button class="primary" data-create>+ Nouveau personnage</button></div></div><div class="hero-banner"><p class="eyebrow">LE PROCHAIN CHAPITRE VOUS ATTEND</p><h2>Une aventure commence avec un héros.</h2><p class="muted">Attributs, équipement, magie et progression. Tout votre personnage, au même endroit.</p><span class="badge">${visible.length} personnage${visible.length>1?'s':''} actif${visible.length>1?'s':''}</span></div>${visible.length?`<div class="grid">${visible.map(card).join('')}</div>`:'<div class="empty"><h2>Votre grimoire est encore vierge.</h2><p>Créez votre premier personnage pour commencer.</p><button class="primary" data-create>Créer un héros</button></div>'}${all.some(c=>c.archived)?`<h2>Archives</h2><div class="grid">${all.filter(c=>c.archived).map(card).join('')}</div>`:''}`;}
-function card(c){return `<article class="character-card"><div class="section-head"><div class="avatar">${e(c.name.slice(0,1).toUpperCase())}</div><span class="badge">Niveau ${c.level}</span></div><h2>${e(c.name)}</h2><p class="muted">${e(c.ancestry||'Ascendance libre')} · ${e(c.class||'Classe libre')}</p><div class="card-meta"><span>${c.hp} PV</span><span>${e(c.campaign||'Sans campagne')}</span></div><div class="toolbar"><button data-open="${c.id}" class="primary">Ouvrir →</button><button data-menu="${c.id}" aria-label="Options de ${e(c.name)}">•••</button></div></article>`;}
-function numberDialog(title,callback,label='Montant',initial=0,extra=''){modal(title,`<form>${field(label,'amount',initial,'number',extra)}${submit}</form>`,fd=>callback(Number(fd.get('amount'))));}
-function calculation(result,title){modal(title,`<div>${result.parts.map(p=>`<div class="row"><span>${e(p.label||p.type)}</span><strong>${p.value>=0?'+':''}${p.value}</strong></div>`).join('')}<div class="row"><strong>Total</strong><strong class="number">${result.total}</strong></div><p class="muted small">Seul le plus fort bonus et la plus forte pénalité de chaque type s’appliquent. Les modificateurs non typés sont cumulés.</p></div>`);}
-function download(data,name){const a=document.createElement('a');const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-async function handle(button){
- const d=button.dataset;
- if('create'in d)return createWizard(async data=>{character=await api('create',0,data,'POST');await open(character.id);});
- if('open'in d)return open(d.open);
- if('import'in d){modal('Importer un personnage',`<form><label>Fichier JSON<input name="file" type="file" accept="application/json,.json" required></label><p class="muted">Format pf2-character, version 1. Maximum 3 Mo.</p>${submit}</form>`,async fd=>{const file=fd.get('file');if(file.size>3000000)throw Error('Fichier trop volumineux');const doc=JSON.parse(await file.text());character=await api('import',0,doc,'POST');await open(character.id);});return;}
- if('menu'in d){const c=await api('',d.menu);modal(c.name,`<div class="toolbar"><button data-duplicate="${c.id}">Dupliquer</button><button data-archive="${c.id}" data-value="${c.archived?0:1}">${c.archived?'Désarchiver':'Archiver'}</button><a href="api.php?action=export&id=${c.id}">Exporter JSON</a><button class="danger" data-delete="${c.id}">Supprimer</button></div>`);return;}
- if('duplicate'in d){const c=await api('duplicate',d.duplicate,{},'POST');document.querySelector('#modal').close();return open(c.id);}
- if('archive'in d){const c=await api('',d.archive);await api('update',c.id,{revision:c.revision,archived:Number(d.value)});document.querySelector('#modal').close();return home();}
- if('delete'in d){const c=await api('',d.delete);modal('Supprimer '+c.name,`<form><p>Cette suppression retire le personnage et toutes ses données. Exportez-le avant si vous souhaitez conserver une copie.</p>${field('Saisissez le nom du personnage','confirm','','text','required')}${submit}</form>`,async fd=>{if(fd.get('confirm')!==c.name)throw Error('Le nom ne correspond pas.');await api('delete',c.id,{revision:c.revision},'DELETE');await home();});return;}
- if(!character)return;
- if('tab'in d){tab=d.tab;render();return;}
- if('calc'in d)return calculation(character.computed.stats[d.calc],d.calc+' — détail du calcul');
- if('spellDc'in d){const result=structuredClone(character.computed.stats.Sorts);result.parts.unshift({label:'Base DD',value:10});result.total+=10;return calculation(result,'DD de sorts');}
- if('attack'in d)return calculation(character.computed.attacks.find(a=>a.id==d.attack).attack,'Bonus d’attaque');
- if('hp'in d)return numberDialog(d.hp==='damage'?'Appliquer des dégâts':d.hp==='heal'?'Recevoir des soins':'Points de vie temporaires',amount=>save('hp',{mode:d.hp,amount}),'Montant',1,'min="0" max="100000" required');
- if('attributes'in d)return modal('Attributs',`<form class="form-grid">${Object.entries(attributes).map(([k,v])=>field(v,k,character.computed.attributes[k],'number','min="-5" max="10"')).join('')}<p class="wide muted">Correction manuelle des modificateurs. Utilisez la progression pour conserver les boosts partiels de niveau.</p>${submit}</form>`,fd=>save('attributes',{attributes:Object.fromEntries(Object.keys(attributes).map(k=>[k,Number(fd.get(k))]))}));
- if('skill'in d || 'lore'in d){const s=character.skills.find(s=>s.id==d.skill)||{name:'Connaissance : ',attribute:'int',rank:1,misc:0};return modal('Maîtrise',`<form class="form-grid">${field('Nom','name',s.name,'text',d.skill?'readonly':'required')}${select('Attribut','attribute',attributes,s.attribute)}${select('Maîtrise','rank',ranks,s.rank)}${field('Bonus divers non typé','misc',s.misc,'number','min="-100" max="100"')}${submit}</form>`,fd=>save('skill',{name:fd.get('name'),attribute:fd.get('attribute'),rank:Number(fd.get('rank')),misc:Number(fd.get('misc'))}));}
- if('add'in d)return editEntry(d.add,null,save);
- if('edit'in d)return editEntry(d.edit,character[d.edit].find(r=>r.id==d.id),save);
- if('remove'in d)return modal('Supprimer cet élément',`<form><p>Confirmer la suppression de cet élément de la fiche.</p>${submit}</form>`,()=>save('remove_entry',{collection:d.remove,entry_id:Number(d.id)}));
- if('consume'in d || 'restore'in d)return save('consume',{collection:d.consume||d.restore,entry_id:Number(d.id),delta:d.restore?1:-1});
- if('equip'in d){const r=character.items.find(r=>r.id==d.equip);return save('entry',{collection:'items',entry_id:r.id,name:r.name,data:{...r.data,equipped:!r.data.equipped}});}
- if('reduce'in d){const r=character.conditions.find(r=>r.id==d.reduce);return r.data.value>1?save('entry',{collection:'conditions',entry_id:r.id,name:r.name,data:{...r.data,value:r.data.value-1}}):save('remove_entry',{collection:'conditions',entry_id:r.id});}
- if('round'in d)return save('next_round',{});
- if('potion'in d)return numberDialog('Utiliser un consommable',heal=>save('use_item',{entry_id:Number(d.potion),heal}),'Soins reçus (0 si aucun)',0,'min="0"');
- if('cast'in d){const spell=character.spells.find(s=>s.id==d.cast);if(['cantrip','focus','innate'].includes(spell.data.casting))return save('cast',{spell_id:spell.id});const slots=character.spell_slots.filter(s=>s.data.current>0&&s.data.spell_rank>=spell.data.spell_rank);if(!slots.length)throw Error('Aucun emplacement de rang suffisant.');return modal('Lancer '+spell.name,`<form>${select('Emplacement à consommer','slot_id',Object.fromEntries(slots.map(s=>[s.id,s.name+' — rang '+s.data.spell_rank+' ('+s.data.current+' disponibles)'])))}${submit}</form>`,fd=>save('cast',{spell_id:spell.id,slot_id:Number(fd.get('slot_id'))}));}
- if('transfer'in d){const all=(await api()).filter(c=>c.id!==character.id);if(!all.length)throw Error('Créez un deuxième personnage pour un transfert.');return modal('Transférer de la monnaie',`<form>${select('Destinataire','target',Object.fromEntries(all.map(c=>[c.id,c.name])))}${field('Montant en pièces de cuivre','copper',100,'number','min="1" required')}<p class="muted">Un transfert se corrige par un transfert inverse. Les deux bourses sont mises à jour ensemble.</p>${submit}</form>`,fd=>save('transfer',{target_id:Number(fd.get('target')),copper:Number(fd.get('copper'))}));}
- if('currency'in d)return modal('Transaction',`<form class="form-grid">${field('Montant (négatif pour dépenser)','amount',0,'number','required')}${select('Monnaie','unit',{pp:'Platine',po:'Or',pa:'Argent',pc:'Cuivre'},'po')}${field('Motif','reason','','text','required')}${submit}</form>`,fd=>save('currency',{amount:Number(fd.get('amount')),unit:fd.get('unit'),reason:fd.get('reason')}));
- if('txundo'in d)return save('currency_undo',{transaction:Number(d.txundo)});
- if('hpundo'in d)return save('undo_hp',{audit_id:Number(d.hpundo)});
- if('xp'in d)return numberDialog('Modifier l’expérience',amount=>save('xp',{amount}),'XP à ajouter ou retirer');
- if('level'in d)return levelUp(character,save);
- if('rest'in d)return rest(character,save);
- if('focus'in d)return save('update',{focus:Math.max(0,Math.min(character.focus_max,Number(character.focus)+Number(d.focus)))});
- if('refocus'in d)return save('update',{focus:Math.min(character.focus_max,Number(character.focus)+1)});
- if('shield'in d)return save('update',{shield_raised:character.shield_raised?0:1});
- if('block'in d)return numberDialog('Blocage au bouclier',amount=>save('shield_block',{amount}),'Dégâts physiques entrants',1,'min="0" required');
- if('mode'in d){document.body.classList.toggle('combat');tab='combat';render();return;}
- if('print'in d){const previous=tab;app.innerHTML=sheet(character,'summary')+Object.entries(tabs).filter(([k])=>k!=='summary').map(([k,label])=>`<div class="print-section"><h2>${e(label)}</h2>${tabContent(character,k)}</div>`).join('');window.print();tab=previous;render();return;}
- if('snapshot'in d)return download(character.level_history.find(r=>r.id==d.snapshot).data.before,'personnage-niveau-precedent.json');
- if('portrait'in d)return modal('Portrait',`<form><label>JPEG, PNG ou WebP • 3 Mo maximum<input type="file" name="portrait" accept="image/jpeg,image/png,image/webp" required></label>${submit}</form>`,async fd=>{fd.append('csrf',csrf);const response=await fetch('portrait.php?id='+character.id,{method:'POST',body:fd});const result=await response.json();if(!result.ok)throw Error(result.error);character=await api('',character.id);render();});
- if('settings'in d)return settings();
+import { api, csrf, escape as e, toast } from "./api.js";
+import { modal, field, select, textarea, submit } from "./modal.js";
+import { attributes, ranks, tabs } from "./catalog.js";
+import { sheet, tabContent } from "./sheet.js";
+import { editEntry } from "./collections.js";
+import { createWizard } from "./wizard.js";
+import { levelUp, rest } from "./progression.js";
+const app = document.querySelector("#app");
+let character = null,
+  tab = "summary",
+  busy = false;
+async function save(action, data) {
+  if (busy) throw Error("Enregistrement en cours.");
+  busy = true;
+  try {
+    character = await api(action, character.id, {
+      ...data,
+      revision: character.revision,
+    });
+    render();
+  } finally {
+    busy = false;
+  }
 }
-function settings(){const c=character;const texts={name:'Nom',player:'Joueur',campaign:'Campagne',ancestry:'Ascendance',heritage:'Héritage',background:'Historique',class:'Classe'};const nums={ancestry_hp:'PV d’ascendance',class_hp:'PV de classe par niveau',hp_bonus:'PV divers',speed:'Vitesse terrestre (pieds)',focus_max:'Focus maximum',xp_target:'XP par niveau'};modal('Informations du personnage',`<form class="form-grid">${Object.entries(texts).map(([k,v])=>field(v,k,c[k])).join('')}${Object.entries(nums).map(([k,v])=>field(v,k,c[k],'number')).join('')}${select('Attribut clé','key_attribute',attributes,c.key_attribute)}${select('Attribut d’incantation','spell_attribute',attributes,c.spell_attribute)}<label class="check"><input type="checkbox" name="milestone" ${c.milestone?'checked':''}>Progression par jalons</label>${['Âge','Taille','Pronoms','Divinité','Alignement (optionnel)','Langues','Sens','Résistances','Faiblesses','Immunités','Vol / nage / escalade / creusement'].map(k=>field(k,'detail_'+k,c.details[k]||'')).join('')}${submit}</form>`,fd=>{const data=Object.fromEntries(Object.keys(texts).map(k=>[k,fd.get(k)]));Object.keys(nums).forEach(k=>data[k]=Number(fd.get(k)));data.key_attribute=fd.get('key_attribute');data.spell_attribute=fd.get('spell_attribute');data.milestone=fd.has('milestone')?1:0;data.details=Object.fromEntries([...fd.entries()].filter(([k])=>k.startsWith('detail_')).map(([k,v])=>[k.slice(7),v]));return save('update',data);});}
-document.addEventListener('click',event=>{const button=event.target.closest('button');if(button)handle(button).catch(error=>toast(error.message));});document.querySelector('#home').onclick=()=>home().catch(err=>toast(err.message));
-const initial=location.hash.match(/^#character\/(\d+)$/);(initial?open(initial[1]):home()).catch(error=>{app.innerHTML=`<p class="error">${e(error.message)}</p>`;});
+function render() {
+  app.innerHTML = sheet(character, tab);
+  document.querySelector("#sheet-nav").innerHTML = Object.entries(tabs)
+    .map(
+      ([k, v]) =>
+        `<button class="nav ${tab === k ? "active" : ""}" data-tab="${k}">${e(v)}</button>`,
+    )
+    .join("");
+}
+async function open(id) {
+  character = await api("", id);
+  tab = "summary";
+  location.hash = "character/" + id;
+  render();
+}
+async function home() {
+  character = null;
+  location.hash = "";
+  document.body.classList.remove("combat");
+  document.querySelector("#sheet-nav").innerHTML = "";
+  const all = await api();
+  const visible = all.filter((c) => !c.archived);
+  app.innerHTML = `<div class="heading"><div><p class="eyebrow">VOTRE TABLE D’AVENTURE</p><h1>Mes personnages</h1><p class="muted">Retrouvez vos héros. Écrivez la suite de leur histoire.</p></div><div class="toolbar"><button data-import>↑ Importer</button><button class="primary" data-create>+ Nouveau personnage</button></div></div><div class="hero-banner"><p class="eyebrow">LE PROCHAIN CHAPITRE VOUS ATTEND</p><h2>Une aventure commence avec un héros.</h2><p class="muted">Attributs, équipement, magie et progression. Tout votre personnage, au même endroit.</p><span class="badge">${visible.length} personnage${visible.length > 1 ? "s" : ""} actif${visible.length > 1 ? "s" : ""}</span></div>${visible.length ? `<div class="grid">${visible.map(card).join("")}</div>` : '<div class="empty"><h2>Votre grimoire est encore vierge.</h2><p>Créez votre premier personnage pour commencer.</p><button class="primary" data-create>Créer un héros</button></div>'}${
+    all.some((c) => c.archived)
+      ? `<h2>Archives</h2><div class="grid">${all
+          .filter((c) => c.archived)
+          .map(card)
+          .join("")}</div>`
+      : ""
+  }`;
+}
+function card(c) {
+  return `<article class="character-card"><div class="section-head"><div class="avatar">${e(c.name.slice(0, 1).toUpperCase())}</div><span class="badge">Niveau ${c.level}</span></div><h2>${e(c.name)}</h2><p class="muted">${e(c.ancestry || "Ascendance libre")} · ${e(c.class || "Classe libre")}</p><div class="card-meta"><span>${c.hp} PV</span><span>${e(c.campaign || "Sans campagne")}</span></div><div class="toolbar"><button data-open="${c.id}" class="primary">Ouvrir →</button><button data-menu="${c.id}" aria-label="Options de ${e(c.name)}">•••</button></div></article>`;
+}
+function numberDialog(
+  title,
+  callback,
+  label = "Montant",
+  initial = 0,
+  extra = "",
+) {
+  modal(
+    title,
+    `<form>${field(label, "amount", initial, "number", extra)}${submit}</form>`,
+    (fd) => callback(Number(fd.get("amount"))),
+  );
+}
+function calculation(result, title) {
+  modal(
+    title,
+    `<div>${result.parts.map((p) => `<div class="row"><span>${e(p.label || p.type)}</span><strong>${p.value >= 0 ? "+" : ""}${p.value}</strong></div>`).join("")}<div class="row"><strong>Total</strong><strong class="number">${result.total}</strong></div><p class="muted small">Seul le plus fort bonus et la plus forte pénalité de chaque type s’appliquent. Les modificateurs non typés sont cumulés.</p></div>`,
+  );
+}
+function download(data, name) {
+  const a = document.createElement("a");
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
+  );
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function handle(button) {
+  const d = button.dataset;
+  if ("create" in d)
+    return createWizard(async (data) => {
+      character = await api("create", 0, data, "POST");
+      await open(character.id);
+    });
+  if ("open" in d) return open(d.open);
+  if ("import" in d) {
+    modal(
+      "Importer un personnage",
+      `<form><label>Fichier JSON<input name="file" type="file" accept="application/json,.json" required></label><p class="muted">Format pf2-character, version 1. Maximum 3 Mo.</p>${submit}</form>`,
+      async (fd) => {
+        const file = fd.get("file");
+        if (file.size > 3000000) throw Error("Fichier trop volumineux");
+        const doc = JSON.parse(await file.text());
+        character = await api("import", 0, doc, "POST");
+        await open(character.id);
+      },
+    );
+    return;
+  }
+  if ("menu" in d) {
+    const c = await api("", d.menu);
+    modal(
+      c.name,
+      `<div class="toolbar"><button data-duplicate="${c.id}">Dupliquer</button><button data-archive="${c.id}" data-value="${c.archived ? 0 : 1}">${c.archived ? "Désarchiver" : "Archiver"}</button><a href="api.php?action=export&id=${c.id}">Exporter JSON</a><button class="danger" data-delete="${c.id}">Supprimer</button></div>`,
+    );
+    return;
+  }
+  if ("duplicate" in d) {
+    const c = await api("duplicate", d.duplicate, {}, "POST");
+    document.querySelector("#modal").close();
+    return open(c.id);
+  }
+  if ("archive" in d) {
+    const c = await api("", d.archive);
+    await api("update", c.id, {
+      revision: c.revision,
+      archived: Number(d.value),
+    });
+    document.querySelector("#modal").close();
+    return home();
+  }
+  if ("delete" in d) {
+    const c = await api("", d.delete);
+    modal(
+      "Supprimer " + c.name,
+      `<form><p>Cette suppression retire le personnage et toutes ses données. Exportez-le avant si vous souhaitez conserver une copie.</p>${field("Saisissez le nom du personnage", "confirm", "", "text", "required")}${submit}</form>`,
+      async (fd) => {
+        if (fd.get("confirm") !== c.name)
+          throw Error("Le nom ne correspond pas.");
+        await api("delete", c.id, { revision: c.revision }, "DELETE");
+        await home();
+      },
+    );
+    return;
+  }
+  if (!character) return;
+  if ("tab" in d) {
+    tab = d.tab;
+    render();
+    return;
+  }
+  if ("hpcalc" in d)
+    return calculation(character.computed.hp_details, "Points de vie maximum");
+  if ("calc" in d)
+    return calculation(
+      character.computed.stats[d.calc],
+      d.calc + " — détail du calcul",
+    );
+  if ("spellDc" in d) {
+    const result = structuredClone(character.computed.stats.Sorts);
+    result.parts.unshift({ label: "Base DD", value: 10 });
+    result.total += 10;
+    return calculation(result, "DD de sorts");
+  }
+  if ("attack" in d)
+    return calculation(
+      character.computed.attacks.find((a) => a.id == d.attack).attack,
+      "Bonus d’attaque",
+    );
+  if ("hp" in d)
+    return numberDialog(
+      d.hp === "damage"
+        ? "Appliquer des dégâts"
+        : d.hp === "heal"
+          ? "Recevoir des soins"
+          : "Points de vie temporaires",
+      (amount) => save("hp", { mode: d.hp, amount }),
+      "Montant",
+      1,
+      'min="0" max="100000" required',
+    );
+  if ("attributes" in d)
+    return modal(
+      "Attributs",
+      `<form class="form-grid">${Object.entries(attributes)
+        .map(([k, v]) =>
+          field(
+            v,
+            k,
+            character.computed.attributes[k],
+            "number",
+            'min="-5" max="10"',
+          ),
+        )
+        .join(
+          "",
+        )}<p class="wide muted">Correction manuelle des modificateurs. Utilisez la progression pour conserver les boosts partiels de niveau.</p>${submit}</form>`,
+      (fd) =>
+        save("attributes", {
+          attributes: Object.fromEntries(
+            Object.keys(attributes).map((k) => [k, Number(fd.get(k))]),
+          ),
+        }),
+    );
+  if ("skill" in d || "lore" in d) {
+    const s = character.skills.find((s) => s.id == d.skill) || {
+      name: "Connaissance : ",
+      attribute: "int",
+      rank: 1,
+      misc: 0,
+    };
+    return modal(
+      "Maîtrise",
+      `<form class="form-grid">${field("Nom", "name", s.name, "text", d.skill ? "readonly" : "required")}${select("Attribut", "attribute", attributes, s.attribute)}${select("Maîtrise", "rank", ranks, s.rank)}${field("Bonus divers non typé", "misc", s.misc, "number", 'min="-100" max="100"')}${submit}</form>`,
+      (fd) =>
+        save("skill", {
+          name: fd.get("name"),
+          attribute: fd.get("attribute"),
+          rank: Number(fd.get("rank")),
+          misc: Number(fd.get("misc")),
+        }),
+    );
+  }
+  if ("add" in d) return editEntry(d.add, null, save);
+  if ("edit" in d)
+    return editEntry(
+      d.edit,
+      character[d.edit].find((r) => r.id == d.id),
+      save,
+    );
+  if ("remove" in d)
+    return modal(
+      "Supprimer cet élément",
+      `<form><p>Confirmer la suppression de cet élément de la fiche.</p>${submit}</form>`,
+      () =>
+        save("remove_entry", { collection: d.remove, entry_id: Number(d.id) }),
+    );
+  if ("consume" in d || "restore" in d)
+    return save("consume", {
+      collection: d.consume || d.restore,
+      entry_id: Number(d.id),
+      delta: d.restore ? 1 : -1,
+    });
+  if ("equip" in d) {
+    const r = character.items.find((r) => r.id == d.equip);
+    return save("entry", {
+      collection: "items",
+      entry_id: r.id,
+      name: r.name,
+      data: { ...r.data, equipped: !r.data.equipped },
+    });
+  }
+  if ("reduce" in d) {
+    const r = character.conditions.find((r) => r.id == d.reduce);
+    return r.data.value > 1
+      ? save("entry", {
+          collection: "conditions",
+          entry_id: r.id,
+          name: r.name,
+          data: { ...r.data, value: r.data.value - 1 },
+        })
+      : save("remove_entry", { collection: "conditions", entry_id: r.id });
+  }
+  if ("round" in d) return save("next_round", {});
+  if ("potion" in d)
+    return numberDialog(
+      "Utiliser un consommable",
+      (heal) => save("use_item", { entry_id: Number(d.potion), heal }),
+      "Soins reçus (0 si aucun)",
+      0,
+      'min="0"',
+    );
+  if ("cast" in d) {
+    const spell = character.spells.find((s) => s.id == d.cast);
+    if (["cantrip", "focus", "innate"].includes(spell.data.casting))
+      return save("cast", { spell_id: spell.id });
+    const slots = character.spell_slots.filter(
+      (s) => s.data.current > 0 && s.data.spell_rank >= spell.data.spell_rank,
+    );
+    if (!slots.length) throw Error("Aucun emplacement de rang suffisant.");
+    return modal(
+      "Lancer " + spell.name,
+      `<form>${select("Emplacement à consommer", "slot_id", Object.fromEntries(slots.map((s) => [s.id, s.name + " — rang " + s.data.spell_rank + " (" + s.data.current + " disponibles)"])))}${submit}</form>`,
+      (fd) =>
+        save("cast", {
+          spell_id: spell.id,
+          slot_id: Number(fd.get("slot_id")),
+        }),
+    );
+  }
+  if ("transfer" in d) {
+    const all = (await api()).filter((c) => c.id !== character.id);
+    if (!all.length)
+      throw Error("Créez un deuxième personnage pour un transfert.");
+    return modal(
+      "Transférer de la monnaie",
+      `<form>${select("Destinataire", "target", Object.fromEntries(all.map((c) => [c.id, c.name])))}${field("Montant en pièces de cuivre", "copper", 100, "number", 'min="1" required')}<p class="muted">Un transfert se corrige par un transfert inverse. Les deux bourses sont mises à jour ensemble.</p>${submit}</form>`,
+      (fd) =>
+        save("transfer", {
+          target_id: Number(fd.get("target")),
+          copper: Number(fd.get("copper")),
+        }),
+    );
+  }
+  if ("currency" in d)
+    return modal(
+      "Transaction",
+      `<form class="form-grid">${field("Montant (négatif pour dépenser)", "amount", 0, "number", "required")}${select("Monnaie", "unit", { pp: "Platine", po: "Or", pa: "Argent", pc: "Cuivre" }, "po")}${field("Motif", "reason", "", "text", "required")}${submit}</form>`,
+      (fd) =>
+        save("currency", {
+          amount: Number(fd.get("amount")),
+          unit: fd.get("unit"),
+          reason: fd.get("reason"),
+        }),
+    );
+  if ("txundo" in d)
+    return save("currency_undo", { transaction: Number(d.txundo) });
+  if ("hpundo" in d) return save("undo_hp", { audit_id: Number(d.hpundo) });
+  if ("xp" in d)
+    return numberDialog(
+      "Modifier l’expérience",
+      (amount) => save("xp", { amount }),
+      "XP à ajouter ou retirer",
+    );
+  if ("level" in d) return levelUp(character, save);
+  if ("rest" in d) return rest(character, save);
+  if ("focus" in d)
+    return save("update", {
+      focus: Math.max(
+        0,
+        Math.min(
+          character.focus_max,
+          Number(character.focus) + Number(d.focus),
+        ),
+      ),
+    });
+  if ("refocus" in d)
+    return save("update", {
+      focus: Math.min(character.focus_max, Number(character.focus) + 1),
+    });
+  if ("shield" in d)
+    return save("update", { shield_raised: character.shield_raised ? 0 : 1 });
+  if ("block" in d)
+    return numberDialog(
+      "Blocage au bouclier",
+      (amount) => save("shield_block", { amount }),
+      "Dégâts physiques entrants",
+      1,
+      'min="0" required',
+    );
+  if ("mode" in d) {
+    document.body.classList.toggle("combat");
+    tab = "combat";
+    render();
+    return;
+  }
+  if ("print" in d) {
+    const previous = tab;
+    app.innerHTML =
+      sheet(character, "summary") +
+      Object.entries(tabs)
+        .filter(([k]) => k !== "summary")
+        .map(
+          ([k, label]) =>
+            `<div class="print-section"><h2>${e(label)}</h2>${tabContent(character, k)}</div>`,
+        )
+        .join("");
+    window.print();
+    tab = previous;
+    render();
+    return;
+  }
+  if ("snapshot" in d)
+    return download(
+      character.level_history.find((r) => r.id == d.snapshot).data.before,
+      "personnage-niveau-precedent.json",
+    );
+  if ("portrait" in d)
+    return modal(
+      "Portrait",
+      `<form><label>JPEG, PNG ou WebP • 3 Mo maximum<input type="file" name="portrait" accept="image/jpeg,image/png,image/webp" required></label>${submit}</form>`,
+      async (fd) => {
+        fd.append("csrf", csrf);
+        const response = await fetch("portrait.php?id=" + character.id, {
+          method: "POST",
+          body: fd,
+        });
+        const result = await response.json();
+        if (!result.ok) throw Error(result.error);
+        character = await api("", character.id);
+        render();
+      },
+    );
+  if ("settings" in d) return settings();
+}
+function settings() {
+  const c = character;
+  const texts = {
+    name: "Nom",
+    player: "Joueur",
+    campaign: "Campagne",
+    ancestry: "Ascendance",
+    heritage: "Héritage",
+    background: "Historique",
+    class: "Classe",
+  };
+  const nums = {
+    ancestry_hp: "PV d’ascendance",
+    class_hp: "PV de classe par niveau",
+    hp_bonus: "PV divers",
+    speed: "Vitesse terrestre (pieds)",
+    focus_max: "Focus maximum",
+    xp_target: "XP par niveau",
+  };
+  modal(
+    "Informations du personnage",
+    `<form class="form-grid">${Object.entries(texts)
+      .map(([k, v]) => field(v, k, c[k]))
+      .join("")}${Object.entries(nums)
+      .map(([k, v]) => field(v, k, c[k], "number"))
+      .join(
+        "",
+      )}${select("Attribut clé", "key_attribute", attributes, c.key_attribute)}${select("Attribut d’incantation", "spell_attribute", attributes, c.spell_attribute)}<label class="check"><input type="checkbox" name="milestone" ${c.milestone ? "checked" : ""}>Progression par jalons</label>${["Âge", "Taille", "Pronoms", "Divinité", "Alignement (optionnel)", "Langues", "Sens", "Résistances", "Faiblesses", "Immunités", "Vol / nage / escalade / creusement"].map((k) => field(k, "detail_" + k, c.details[k] || "")).join("")}${submit}</form>`,
+    (fd) => {
+      const data = Object.fromEntries(
+        Object.keys(texts).map((k) => [k, fd.get(k)]),
+      );
+      Object.keys(nums).forEach((k) => (data[k] = Number(fd.get(k))));
+      data.key_attribute = fd.get("key_attribute");
+      data.spell_attribute = fd.get("spell_attribute");
+      data.milestone = fd.has("milestone") ? 1 : 0;
+      data.details = Object.fromEntries(
+        [...fd.entries()]
+          .filter(([k]) => k.startsWith("detail_"))
+          .map(([k, v]) => [k.slice(7), v]),
+      );
+      return save("update", data);
+    },
+  );
+}
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (button) handle(button).catch((error) => toast(error.message));
+});
+document.querySelector("#home").onclick = () =>
+  home().catch((err) => toast(err.message));
+const initial = location.hash.match(/^#character\/(\d+)$/);
+(initial ? open(initial[1]) : home()).catch((error) => {
+  app.innerHTML = `<p class="error">${e(error.message)}</p>`;
+});
 
-document.addEventListener('input',event=>{if(event.target.matches('[data-filter]')){const term=event.target.value.toLocaleLowerCase();event.target.closest('section').querySelectorAll('[data-search]').forEach(row=>row.hidden=!row.dataset.search.includes(term));}});
+document.addEventListener("input", (event) => {
+  if (event.target.matches("[data-filter]")) {
+    const term = event.target.value.toLocaleLowerCase();
+    event.target
+      .closest("section")
+      .querySelectorAll("[data-search]")
+      .forEach((row) => (row.hidden = !row.dataset.search.includes(term)));
+  }
+});
