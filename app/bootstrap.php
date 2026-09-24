@@ -5,6 +5,7 @@ spl_autoload_register(function ($class) { $path = ROOT . '/' . str_replace('\\',
 function env(string $key, string $default = ''): string { static $values; $values ??= parse_ini_file(ROOT.'/.env', false, INI_SCANNER_RAW) ?: []; return (string)($values[$key] ?? $default); }
 function e(mixed $v): string { return htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 ini_set('display_errors', '0');
+ini_set('zend.exception_ignore_args','1');
 ini_set('log_errors', '1');
 ini_set('error_log', ROOT.'/storage/logs/php.log');
 if (PHP_SAPI !== 'cli') {

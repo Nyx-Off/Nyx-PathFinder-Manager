@@ -8,7 +8,7 @@ header('Content-Type: application/json; charset=utf-8');
 try {
  if(empty($_SESSION['user_id']))throw new DomainException('Connexion requise.',401);
  $r=new Repository(Connection::get(),(int)$_SESSION['user_id']);$service=new CharacterService($r);
- $method=$_SERVER['REQUEST_METHOD'];$id=(int)($_GET['id']??0);$action=(string)($_GET['action']??'');
+ $method=$_SERVER['REQUEST_METHOD'];if($method!=='GET'){$operationLock=fopen(ROOT.'/storage/operations.lock','c');if(!$operationLock||!flock($operationLock,LOCK_SH))throw new RuntimeException();}$id=(int)($_GET['id']??0);$action=(string)($_GET['action']??'');
  if($method==='GET') {
   if($action==='export'){$data=$r->export($id);header('Content-Disposition: attachment; filename="personnage-'.$id.'.json"');}
   else $data=$id?$r->get($id):$r->all();

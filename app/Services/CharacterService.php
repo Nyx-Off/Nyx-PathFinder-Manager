@@ -11,7 +11,7 @@ final class CharacterService {
    $q=$this->r->query('UPDATE characters SET revision=revision+1 WHERE id=? AND revision=?',[$id,$c['revision']]);if($q->rowCount()!==1)throw new \DomainException('Modification concurrente.',409);
    $result=$this->mutate($id,$action,$d,$c);
    if($action!=='delete')$this->r->audit($id,$result['message']??$action,$result['audit']??[]);
-   $this->r->db->commit();return $action==='delete'?['deleted'=>true]:$this->r->get($id);
+   $this->r->db->commit();if($action==='delete'&&preg_match('/^[a-f0-9]{48}\.jpg$/',$c['portrait'])&&is_file(ROOT.'/storage/uploads/'.$c['portrait']))unlink(ROOT.'/storage/uploads/'.$c['portrait']);return $action==='delete'?['deleted'=>true]:$this->r->get($id);
   }catch(\Throwable $e){if($this->r->db->inTransaction())$this->r->db->rollBack();throw $e;}
  }
  private function update(int $id,array $values): void { $sets=array_map(fn($key)=>"$key=?",array_keys($values));$this->r->query('UPDATE characters SET '.implode(',',$sets).' WHERE id=?',[...array_values($values),$id]); }
