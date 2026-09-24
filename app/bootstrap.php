@@ -23,6 +23,16 @@ ini_set('zend.exception_ignore_args', '1');
 ini_set('log_errors', '1');
 ini_set('error_log', ROOT . '/storage/logs/php.log');
 if (PHP_SAPI !== 'cli') {
+    $requestLock = fopen(ROOT . '/storage/operations.lock', 'c');
+    if (!$requestLock || !flock($requestLock, LOCK_SH)) {
+        http_response_code(503);
+        exit('Service momentanément indisponible.');
+    }
+    if (is_file(ROOT . '/storage/maintenance')) {
+        http_response_code(503);
+        header('Retry-After: 30');
+        exit('Maintenance en cours. Réessayez dans quelques instants.');
+    }
     if (!is_dir(ROOT . '/storage/sessions')) {
         mkdir(ROOT . '/storage/sessions', 0700, true);
     }

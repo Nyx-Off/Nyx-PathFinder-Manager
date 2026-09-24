@@ -25,6 +25,10 @@ try {
     if ($mysql->query('SHOW TABLES')->fetch()) {
         throw new RuntimeException('nonempty');
     }
+    $migrationLock = fopen(ROOT . '/storage/operations.lock', 'c');
+    if (!$migrationLock || !flock($migrationLock, LOCK_EX)) {
+        throw new RuntimeException('lock');
+    }
     $source = app\Database\Connection::get();
     $source->beginTransaction();
     $mysql->exec('CREATE TABLE schema_migrations (version VARCHAR(190) PRIMARY KEY, applied_at VARCHAR(30) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');

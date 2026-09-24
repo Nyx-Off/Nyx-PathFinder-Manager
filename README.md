@@ -7,7 +7,7 @@ Gestionnaire privé de personnages Pathfinder 2e / Remaster, en français, fonct
 - Projet : `/home/clients/17f80a4eac00cf168dafe6353807f683/sites/nyx-off.dev/others/pathfinder`
 - URL : https://nyx-off.dev/others/pathfinder/
 - Dépôt : https://github.com/Nyx-Off/Nyx-PathFinder-Manager
-- PHP 8.4 ; SQLite actif en attendant le mot de passe MySQL.
+- PHP 8.4 ; MySQL actif sur `k599zx_NyxPathfinderManager`, hôte `k599zx.myd.infomaniak.com`. La base SQLite initiale est conservée comme sauvegarde.
 - Compte initial : ouvrir le lien privé conservé dans `storage/setup-link.txt`. Il permet de choisir son adresse et son mot de passe. Après création du premier utilisateur, l’initialisation est fermée. Ne pas publier ce lien.
 - Alternative CLI : `php bin/user.php adresse@example.com`, puis saisir le mot de passe sur l’entrée standard. Ne jamais placer de mot de passe dans les arguments de commande. Pour masquer la saisie avec un terminal interactif : `read -rs PASSWORD_INPUT; printf '%s\n' "$PASSWORD_INPUT" | php bin/user.php adresse@example.com; unset PASSWORD_INPUT`.
 
@@ -68,9 +68,9 @@ L’architecture utilise les entrées à la racine pour le sous-dossier Apache e
 
 ## Base MySQL de production
 
-La configuration réelle est dans `.env`, hors Git. Destination prévue : base `k599zx_NyxPathfinderManager`, hôte `k599zx.myd.infomaniak.com`. Le mot de passe n’était pas fourni lors du déploiement initial ; la connexion MySQL ne peut pas être validée sans lui.
+La configuration réelle est dans `.env`, hors Git. Destination prévue : base `k599zx_NyxPathfinderManager`, hôte `k599zx.myd.infomaniak.com`. Le mot de passe a été renseigné dans `.env` par le propriétaire. La connexion et la migration depuis SQLite ont été validées, ainsi que les parcours HTTP et navigateur sur MySQL.
 
-Renseigner `DB_PASS` uniquement dans `.env`. Pour une installation MySQL neuve, définir `DB_DRIVER=mysql`, puis lancer les migrations. Toutes les tables sont en InnoDB, utf8mb4 / utf8mb4_unicode_ci. PDO utilise les préparations natives et les exceptions. Ne pas simplement basculer le driver d’un site contenant des personnages : sauvegarder et migrer ses données au préalable. Le script `bin/migrate-storage.php` copie une base SQLite vers une destination MySQL **vide** en conservant les identifiants et propriétaires ; voir son aide avant usage.
+Renseigner `DB_PASS` uniquement dans `.env`. Pour une migration ou une intervention, créer `storage/maintenance` afin que les requêtes HTTP reçoivent 503, puis supprimer ce fichier à la fin. La migration et les sauvegardes prennent un verrou exclusif sur `storage/operations.lock`. Pour une installation MySQL neuve, définir `DB_DRIVER=mysql`, puis lancer les migrations. Toutes les tables sont en InnoDB, utf8mb4 / utf8mb4_unicode_ci. PDO utilise les préparations natives et les exceptions. Ne pas simplement basculer le driver d’un site contenant des personnages : sauvegarder et migrer ses données au préalable. Le script `bin/migrate-storage.php` copie une base SQLite vers une destination MySQL **vide** en conservant les identifiants et propriétaires ; voir son aide avant usage.
 
 ## Sauvegardes et restauration
 
