@@ -40,6 +40,13 @@ final class Engine
         }
         $mods = [];
         foreach ($c['modifiers'] as $r) {
+            $equipment = $r['data']['equipment'] ?? '';
+            if ($equipment !== '') {
+                $matches = array_filter($c['items'], fn ($item) => $item['name'] === $equipment && InventoryCalculator::equipped($item['data']) && (empty($r['data']['requires_investment']) || !empty($item['data']['invested'])));
+                if (!$matches) {
+                    continue;
+                }
+            }
             if (($r['data']['active'] ?? true)) {
                 $mods[] = array_merge($r['data'], ['label' => $r['name']]);
             }
@@ -69,11 +76,11 @@ final class Engine
         }
         $armor = null;
         $shield = null;
-        $bulk = 0;
+        $inventory = InventoryCalculator::calculate($c['items']);
+        $bulk = $inventory['bulk'];
         foreach ($c['items'] as $item) {
             $d = $item['data'];
-            $bulk += (float)($d['bulk'] ?? 0) * (int)($d['quantity'] ?? 1);
-            if (!empty($d['equipped']) && (int)($d['quantity'] ?? 1) > 0) {
+            if (InventoryCalculator::equipped($d)) {
                 if (($d['type'] ?? '') === 'armure') {
                     $armor = $d;
                 }
@@ -94,6 +101,13 @@ final class Engine
             $base = in_array($name, ['Armure','Classe']) ? 10 : 0;
             if ($name === 'Armure' && $armor) {
                 $attribute = min($attribute, (int)($armor['dex_cap'] ?? 99));
+            }
+            if ($name === 'Armure') {
+                foreach ($mods as $m) {
+                    if (($m['target'] ?? '') === 'Armure' && isset($m['dex_cap'])) {
+                        $attribute = min($attribute, (int)$m['dex_cap']);
+                    }
+                }
             }
             $parts = [['label' => 'Base','value' => $base,'type' => 'untyped'],['label' => Catalog::ATTRIBUTES[$attr] ?? $attr,'value' => $attribute,'type' => 'untyped'],['label' => Catalog::RANKS[(int)$s['rank']] . ' (niveau ' . $c['level'] . ')','value' => self::proficiency((int)$c['level'], (int)$s['rank']),'type' => 'untyped'],['label' => 'Divers','value' => (int)$s['misc'],'type' => 'untyped']];
             foreach ($mods as $m) {
@@ -116,7 +130,7 @@ final class Engine
         $attacks = [];
         foreach ($c['items'] as $item) {
             $d = $item['data'];
-            if (($d['type'] ?? '') !== 'arme' || empty($d['equipped']) || (int)($d['quantity'] ?? 1) === 0) {
+            if (($d['type'] ?? '') !== 'arme' || !InventoryCalculator::equipped($d)) {
                 continue;
             }
             $attr = ($d['ranged'] ?? false) ? 'dex' : ((str_contains(mb_strtolower($d['traits'] ?? ''), 'finesse') && $a['dex'] > $a['str']) ? 'dex' : 'str');
@@ -136,7 +150,7 @@ final class Engine
         }
         $max = max(1, (int)$c['ancestry_hp'] + (int)$c['level'] * ((int)$c['class_hp'] + $a['con']) + (int)$c['hp_bonus'] - ($conditions['Drainé'] ?? 0) * (int)$c['level']);
         $hpDetails = ['total' => $max,'parts' => [['label' => 'PV d’ascendance','value' => (int)$c['ancestry_hp']],['label' => 'PV de classe × niveau','value' => (int)$c['class_hp'] * (int)$c['level']],['label' => 'Constitution × niveau','value' => $a['con'] * (int)$c['level']],['label' => 'PV divers','value' => (int)$c['hp_bonus']],['label' => 'Drainé × niveau','value' => -($conditions['Drainé'] ?? 0) * (int)$c['level']]]];
-        return ['hp_details' => $hpDetails,'stats' => $stats,'attributes' => $a,'hp_max' => $max,'bulk' => floor($bulk * 10) / 10,'bulk_limit' => 5 + $a['str'],'bulk_max' => 10 + $a['str'],'encumbered' => $encumbered,'speed' => max(0, (int)$c['speed'] - ($encumbered ? 10 : 0) - ($armor ? max(0, (int)($armor['speed_penalty'] ?? 0) - ($a['str'] >= (int)($armor['strength'] ?? 0) ? 5 : 0)) : 0)),'attacks' => $attacks,'spell_dc' => 10 + ($stats['Sorts']['total'] ?? 0)];
+        return ['containers' => $inventory['containers'], 'hp_details' => $hpDetails,'stats' => $stats,'attributes' => $a,'hp_max' => $max,'bulk' => floor($bulk * 10) / 10,'bulk_limit' => 5 + $a['str'],'bulk_max' => 10 + $a['str'],'encumbered' => $encumbered,'speed' => max(0, (int)$c['speed'] - ($encumbered ? 10 : 0) - ($armor ? max(0, (int)($armor['speed_penalty'] ?? 0) - ($a['str'] >= (int)($armor['strength'] ?? 0) ? 5 : 0)) : 0)),'attacks' => $attacks,'spell_dc' => 10 + ($stats['Sorts']['total'] ?? 0)];
     }
 
     public static function boost(int $value, int $partial): array

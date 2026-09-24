@@ -48,9 +48,18 @@ export function tabContent(c, tab) {
       )
       .join(
         "",
-      )}</div><div class="row"><span>DD de classe</span><button data-calc="Classe">${v.stats.Classe.total}</button><span>DD de sorts</span><button data-spell-dc>${v.spell_dc}</button></div></section><section class="panel"><h3>Attaques prêtes</h3>${attacks(c)}</section>${section(c, "resources", "Ressources")}</div><div>${section(c, "conditions", "Conditions actives")}${section(c, "modifiers", "Modificateurs temporaires")}<section class="panel"><h3>Derniers événements</h3>${history(c, 8)}</section></div></div>`;
+      )}</div><div class="row">${c.details["DD de classe"] === "Non applicable" ? "" : `<span>DD de classe</span><button data-calc="Classe">${v.stats.Classe.total}</button>`}<span>DD de sorts</span><button data-spell-dc>${v.spell_dc}</button></div></section><section class="panel"><h3>Attaques prêtes</h3>${attacks(c)}</section>${section(c, "resources", "Ressources")}</div><div>${section(c, "conditions", "Conditions actives")}${section(c, "modifiers", "Bonus & modificateurs")}<section class="panel"><h3>Derniers événements</h3>${history(c, 8)}</section></div></div>`;
   if (tab === "skills")
-    return `<section class="panel"><div class="section-head"><h3>Compétences & maîtrises</h3><button data-lore>+ Connaissance</button></div><div class="table-wrap"><table><thead><tr><th>Compétence</th><th>Attribut</th><th>Maîtrise</th><th>Bonus</th><th></th></tr></thead><tbody>${c.skills.map((s) => `<tr><td>${e(s.name)}</td><td>${e(attributes[s.attribute])}</td><td>${ranks[s.rank]}</td><td><button data-calc="${e(s.name)}">${signed(v.stats[s.name]?.total ?? 0)}</button></td><td><button data-skill="${s.id}">Modifier</button></td></tr>`).join("")}</tbody></table></div></section>`;
+    return `<section class="panel"><div class="section-head"><h3>Compétences & maîtrises</h3><button data-lore>+ Connaissance</button></div><div class="table-wrap"><table><thead><tr><th>Compétence</th><th>Attribut</th><th>Maîtrise</th><th>Bonus</th><th></th></tr></thead><tbody>${c.skills
+      .filter(
+        (s) =>
+          s.name !== "Classe" || c.details["DD de classe"] !== "Non applicable",
+      )
+      .map(
+        (s) =>
+          `<tr><td>${e(s.name)}</td><td>${e(attributes[s.attribute])}</td><td>${ranks[s.rank]}</td><td><button data-calc="${e(s.name)}">${signed(v.stats[s.name]?.total ?? 0)}</button></td><td><button data-skill="${s.id}">Modifier</button></td></tr>`,
+      )
+      .join("")}</tbody></table></div></section>`;
   if (tab === "combat")
     return `<div class="two-col"><div><section class="panel"><div class="section-head"><h3>Frappes & attaques multiples</h3><button data-round>Nouveau tour</button></div>${attacks(c)}<p class="small muted">La pénalité d’attaques multiples s’applique selon le trait agile. Les traits spéciaux et situations restent à vérifier.</p></section><section class="panel"><h3>Bouclier</h3><button data-shield>${c.shield_raised ? "Abaisser" : "Lever"} le bouclier</button><button data-block>Bloquer</button><p class="muted">Le blocage applique la dureté, puis les dégâts restants au personnage et au bouclier.</p></section><section class="panel"><h3>Sens, défenses & déplacements</h3>${
       Object.entries(c.details)
@@ -59,7 +68,16 @@ export function tabContent(c, tab) {
       '<p class="muted">À renseigner dans les informations du personnage.</p>'
     }</section></div><div>${section(c, "conditions", "Conditions")}${section(c, "modifiers", "Modificateurs")}${section(c, "resources", "Ressources")}</div></div>`;
   if (tab === "items")
-    return `<div class="hero-banner"><div class="section-head"><div><p class="eyebrow">BOURSE & ÉQUIPEMENT</p><h2>${Math.floor(c.copper / 1000)} pp · ${Math.floor((c.copper % 1000) / 100)} po · ${Math.floor((c.copper % 100) / 10)} pa · ${c.copper % 10} pc</h2><p class="muted">Valeur totale ${(c.copper / 100).toFixed(2)} po • conversion automatique</p></div><button data-transfer>Transférer</button><button data-currency class="primary">+ / − Transaction</button></div><span class="badge">Encombrement ${v.bulk} / ${v.bulk_limit} • Maximum ${v.bulk_max}</span>${v.encumbered ? '<p class="warning">Encombré : maladroit 1 et vitesse réduite de 10 pieds.</p>' : ""}</div>${section(c, "items", "Inventaire")}<section class="panel"><h3>Transactions</h3>${
+    return `<div class="hero-banner"><div class="section-head"><div><p class="eyebrow">BOURSE & ÉQUIPEMENT</p><h2>${Math.floor(c.copper / 1000)} pp · ${Math.floor((c.copper % 1000) / 100)} po · ${Math.floor((c.copper % 100) / 10)} pa · ${c.copper % 10} pc</h2><p class="muted">Valeur totale ${(c.copper / 100).toFixed(2)} po • conversion automatique</p></div><button data-transfer>Transférer</button><button data-currency class="primary">+ / − Transaction</button></div><span class="badge">Encombrement ${v.bulk} / ${v.bulk_limit} • Maximum ${v.bulk_max}</span>${Object.entries(
+      v.containers || {},
+    )
+      .map(
+        ([name, bag]) =>
+          `<p class="small ${bag.bulk > bag.capacity ? "warning" : "muted"}">${e(name)} : ${Number(bag.bulk.toFixed(2))} / ${bag.capacity} Enc.${bag.bulk > bag.capacity ? " — capacité dépassée, contenu compté comme porté" : " — contenu exclu du poids porté"}</p>`,
+      )
+      .join(
+        "",
+      )}${v.encumbered ? '<p class="warning">Encombré : maladroit 1 et vitesse réduite de 10 pieds.</p>' : ""}</div>${section(c, "items", "Inventaire")}<section class="panel"><h3>Transactions</h3>${
       [...c.currency_transactions]
         .reverse()
         .map(
@@ -69,7 +87,7 @@ export function tabContent(c, tab) {
         .join("") || '<p class="muted">Aucune transaction.</p>'
     }</section>`;
   if (tab === "spells")
-    return `<div class="hero-banner"><div class="section-head"><div><p class="eyebrow">MAGIE</p><h2>Attaque ${signed(v.stats.Sorts.total)} · DD ${v.spell_dc}</h2></div><div class="toolbar"><span>Focus ${c.focus} / ${c.focus_max}</span><button data-focus="-1">−1</button><button data-focus="1">+1</button><button data-refocus>Refocaliser</button></div></div></div><div class="two-col"><div>${section(c, "spells", "Grimoire & répertoire")}</div><div>${section(c, "spell_slots", "Emplacements de sorts")}<p class="muted small">Les emplacements se consomment indépendamment des marques de préparation. Les tours de magie ne consomment pas d’emplacement.</p></div></div>`;
+    return `<div class="hero-banner"><div class="section-head"><div><p class="eyebrow">MAGIE</p><h2>Attaque ${signed(v.stats.Sorts.total)} · DD ${v.spell_dc}</h2></div><div class="toolbar"><span>Focus ${c.focus} / ${c.focus_max}</span><button data-focus="-1">−1</button><button data-focus="1">+1</button><button data-refocus>Refocaliser</button></div></div></div><div class="two-col"><div>${section(c, "spells", "Grimoire & répertoire")}</div><div>${section(c, "spell_slots", "Emplacements de sorts")}<p class="muted small">« Lancer » consomme un emplacement et marque la préparation utilisée. « Préparer une copie » conserve le sort dans votre grimoire. Les tours de magie et sorts de focus s’intensifient au rang ${Math.ceil(c.level / 2)} ; ils ne consomment pas d’emplacement.</p></div></div>`;
   if (tab === "progression")
     return `<div class="hero-banner"><p class="eyebrow">LE CHEMIN DU HÉROS</p><h2>Niveau ${c.level}</h2><p>${c.milestone ? "Progression par jalons" : `${c.xp} / ${c.xp_target} XP`}</p><div class="toolbar"><button data-xp>+ / − XP</button><button data-level class="primary" ${c.level >= 20 ? "disabled" : ""}>Passer au niveau ${Math.min(20, Number(c.level) + 1)}</button></div></div><section class="panel"><h3>Choix de chaque niveau</h3>${[
       ...c.level_history,

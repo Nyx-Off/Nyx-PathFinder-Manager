@@ -194,7 +194,7 @@ async function handle(button) {
         )
         .join(
           "",
-        )}<p class="wide muted">Correction manuelle des modificateurs. Utilisez la progression pour conserver les boosts partiels de niveau.</p>${submit}</form>`,
+        )}<p class="wide muted">Saisissez le bonus (+2, +4…), pas l’ancienne valeur (14, 18…). Exemple : Intelligence 24 = +7. Utilisez la progression pour conserver les boosts partiels de niveau.</p>${submit}</form>`,
       (fd) =>
         save("attributes", {
           attributes: Object.fromEntries(
@@ -211,7 +211,7 @@ async function handle(button) {
     };
     return modal(
       "Maîtrise",
-      `<form class="form-grid">${field("Nom", "name", s.name, "text", d.skill ? "readonly" : "required")}${select("Attribut", "attribute", attributes, s.attribute)}${select("Maîtrise", "rank", ranks, s.rank)}${field("Bonus divers non typé", "misc", s.misc, "number", 'min="-100" max="100"')}${submit}</form>`,
+      `<form class="form-grid">${field("Nom", "name", s.name, "text", d.skill ? "readonly" : "required")}${select("Attribut", "attribute", attributes, s.attribute)}${select("Maîtrise", "rank", ranks, s.rank)}${field("Ajustement supplémentaire (pas le total)", "misc", s.misc, "number", 'min="-100" max="100"')}<p class="wide muted">Laissez cet ajustement à 0 sauf exception. Le total additionne automatiquement l’attribut, la maîtrise et les modificateurs. Non qualifié = +0 ; qualifié/expert/maître/légendaire = niveau +2/+4/+6/+8. Ajoutez les bonus d’objet, de statut ou de circonstance dans « Modificateurs ».</p>${submit}</form>`,
       (fd) =>
         save("skill", {
           name: fd.get("name"),
@@ -247,7 +247,20 @@ async function handle(button) {
       collection: "items",
       entry_id: r.id,
       name: r.name,
-      data: { ...r.data, equipped: !r.data.equipped },
+      data: {
+        ...r.data,
+        equipped: !r.data.equipped,
+        container: r.data.equipped ? r.data.container || "" : "",
+      },
+    });
+  }
+  if ("toggleModifier" in d) {
+    const modifier = character.modifiers.find((r) => r.id == d.toggleModifier);
+    return save("entry", {
+      collection: "modifiers",
+      entry_id: modifier.id,
+      name: modifier.name,
+      data: { ...modifier.data, active: !modifier.data.active },
     });
   }
   if ("reduce" in d) {
@@ -270,6 +283,14 @@ async function handle(button) {
       0,
       'min="0"',
     );
+  if ("prepare" in d) {
+    const spell = character.spells.find((s) => s.id == d.prepare);
+    return save("entry", {
+      collection: "spells",
+      name: spell.name.slice(0, 170) + " — préparé",
+      data: { ...spell.data, prepared: true, used: false },
+    });
+  }
   if ("cast" in d) {
     const spell = character.spells.find((s) => s.id == d.cast);
     if (["cantrip", "focus", "innate"].includes(spell.data.casting))
@@ -450,11 +471,14 @@ const initial = location.hash.match(/^#character\/(\d+)$/);
 });
 
 document.addEventListener("input", (event) => {
-  if (event.target.matches("[data-filter]")) {
-    const term = event.target.value.toLocaleLowerCase();
-    event.target
-      .closest("section")
-      .querySelectorAll("[data-search]")
-      .forEach((row) => (row.hidden = !row.dataset.search.includes(term)));
+  if (event.target.matches("[data-filter], [data-spell-filter]")) {
+    const panel = event.target.closest("section");
+    const term = panel.querySelector("[data-filter]").value.toLocaleLowerCase();
+    const state = panel.querySelector("[data-spell-filter]")?.value || "all";
+    panel.querySelectorAll("[data-search]").forEach((row) => {
+      row.hidden =
+        !row.dataset.search.includes(term) ||
+        (state !== "all" && row.dataset.spellState !== state);
+    });
   }
 });

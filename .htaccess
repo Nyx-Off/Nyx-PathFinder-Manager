@@ -1,6 +1,6 @@
 Options -Indexes
 DirectoryIndex index.php
-<FilesMatch "(^\.|\.(sql|sqlite|log|md)$)">
+<FilesMatch "(^\.|\.(sql|sqlite|log|md|pdf)$)">
 Require all denied
 </FilesMatch>
 RewriteEngine On

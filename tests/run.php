@@ -122,6 +122,29 @@ $c = act('entry', ['collection' => 'items','name' => 'Potion test','data' => ['t
 $potion = end($c['items']);
 $c = act('use_item', ['entry_id' => $potion['id'],'heal' => 2]);
 check(end($c['items'])['data']['quantity'] === 0, 'consumable operation');
+// Equipment bonuses follow the item and survive JSON export/import by name.
+$c = act('entry', ['collection' => 'items','name' => 'Anneau test','data' => ['type' => 'magique','quantity' => 1,'equipped' => true,'invested' => true]]);
+$ring = end($c['items']);
+$baseArcana = $c['computed']['stats']['Arcanes']['total'];
+$c = act('entry', ['collection' => 'modifiers','name' => 'Anneau test — Arcanes','data' => ['target' => 'Arcanes','type' => 'item','value' => 2,'active' => true,'equipment' => 'Anneau test','requires_investment' => true]]);
+check($c['computed']['stats']['Arcanes']['total'] === $baseArcana + 2, 'equipped invested item bonus');
+$c = act('entry', ['collection' => 'items','entry_id' => $ring['id'],'name' => $ring['name'],'data' => array_merge($ring['data'], ['invested' => false])]);
+check($c['computed']['stats']['Arcanes']['total'] === $baseArcana, 'uninvesting removes item bonus');
+$c = act('entry', ['collection' => 'items','entry_id' => $ring['id'],'name' => $ring['name'],'data' => array_merge($ring['data'], ['container' => 'Sac'])]);
+check($c['computed']['stats']['Arcanes']['total'] === $baseArcana, 'stored equipment has no active bonus');
+$inventory = [
+    ['name' => 'Sac','data' => ['quantity' => 1,'bulk' => 1,'extradimensional' => true,'capacity' => 5]],
+    ['name' => 'Réserve','data' => ['quantity' => 30,'bulk' => .1,'container' => 'Sac']],
+];
+check(app\Rules\InventoryCalculator::calculate($inventory)['bulk'] === 1.0, 'dimensional contents excluded from carried bulk');
+$inventory[0]['data']['capacity'] = 2;
+check(app\Rules\InventoryCalculator::calculate($inventory)['bulk'] === 4.0, 'overfilled container retains carried weight');
+$inventory[0]['name'] = 'Autre sac';
+check(app\Rules\InventoryCalculator::calculate($inventory)['bulk'] === 4.0, 'missing container retains carried weight');
+rejects(fn () => act('entry', ['collection' => 'items','name' => 'Sac invalide','data' => ['capacity' => -1]]), 'negative capacity rejected', 422);
+$c = act('entry', ['collection' => 'spells','name' => 'Grimoire seulement','data' => ['casting' => 'prepared','spell_rank' => 1,'prepared' => false]]);
+$bookSpell = end($c['spells']);
+rejects(fn () => act('cast', ['spell_id' => $bookSpell['id'],'slot_id' => $slot]), 'unprepared spell cannot consume a slot', 422);
 $c = act('update', ['name' => 'Test modifié']);
 check($c['name'] === 'Test modifié', 'update character');
 act('delete');

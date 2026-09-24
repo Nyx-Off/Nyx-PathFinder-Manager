@@ -80,6 +80,23 @@ const assert = require("assert");
   });
   await page.locator(".tabs [data-tab=items]").click();
   await page.getByText("Potion de soin", { exact: true }).waitFor();
+  await page.locator('[data-edit="items"]').first().click();
+  assert(
+    await page.locator('[name="rank"]').isHidden(),
+    "weapon fields hidden for potion",
+  );
+  await page.locator('[name="type"]').selectOption("arme");
+  assert(
+    await page.locator('[name="rank"]').isVisible(),
+    "weapon fields available for weapon",
+  );
+  await page.locator('[name="extradimensional"]').check();
+  assert(
+    await page.locator('[name="capacity"]').isVisible(),
+    "container capacity available",
+  );
+  await page.locator("#close-modal").click();
+  console.log("PASS category-specific inventory fields");
   await page.locator("[data-potion]").click();
   await page.locator("[name=amount]").fill("2");
   await page.locator("#modal button[type=submit]").click();
@@ -90,6 +107,32 @@ const assert = require("assert");
   await page.locator("#modal button[type=submit]").click();
   await page.locator("#modal").waitFor({ state: "hidden" });
   console.log("PASS browser cast spell");
+  await page.locator('[data-add="spells"]').click();
+  await page.locator('[name="name"]').fill("Sort du livre test");
+  await page.locator("#modal button[type=submit]").click();
+  await page.locator("#modal").waitFor({ state: "hidden" });
+  await page.locator("[data-spell-filter]").selectOption("book");
+  await page.getByRole("button", { name: "Préparer une copie" }).click();
+  await page
+    .getByText("Sort du livre test — préparé", { exact: true })
+    .waitFor();
+  await page.locator("[data-spell-filter]").selectOption("ready");
+  assert(
+    await page.locator("[data-prepare]").isHidden(),
+    "book filtered from ready spells",
+  );
+  await page.locator("[data-filter]").first().fill("absent test");
+  assert.equal(
+    await page
+      .locator("[data-spell-filter]")
+      .locator("..")
+      .locator("..")
+      .locator("[data-search]:visible")
+      .count(),
+    0,
+    "combined search and preparation filter",
+  );
+  console.log("PASS spell preparation and filters");
   await page.locator(".tabs [data-tab=progression]").click();
   await page.locator("[data-level]").click();
   await page.locator("[name=feat_name]").fill("Don niveau 2");

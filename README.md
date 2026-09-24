@@ -113,3 +113,13 @@ Sauvegarder, vérifier `git status`, récupérer la branche main sans écraser d
 ## Références et contenus
 
 Aucun texte de livre ni catalogue tiers complet n’est reproduit. Les descriptions sont rédigées par les utilisateurs ; les icônes d’actions sont des formes génériques. Références de vérification : [aperçu officiel Remaster](https://downloads.paizo.com/RemasterCorePreview.pdf), [errata officiels](https://paizo.com/pathfinder/faq), [FAQ Remaster](https://paizo.com/pathfinder/remaster/faq). Pathfinder est une marque de Paizo Inc. Toute future intégration de contenus de règles devra être accompagnée d’un examen de la licence propre à la source.
+
+## Rangement et préparation des sorts
+
+L’inventaire masque les champs réservés aux armes, armures ou boucliers selon la catégorie. Pour un sac extradimensionnel, cocher l’option et saisir sa capacité. Dans les objets rangés, indiquer son nom exact dans « Rangé dans ». Seul un contenant unique, présent en un exemplaire et lui-même non rangé peut soustraire son contenu au poids porté. Un contenant absent ou surchargé conserve tout le poids dans le total. Les rangements imbriqués ne sont pas automatisés. Renommer le contenant nécessite de mettre à jour les noms de rangement.
+
+Un modificateur peut dépendre d’un objet équipé, éventuellement investi, identifié par son nom exact. Ranger, déséquiper ou désinvestir cet objet retire son effet du calcul. Les bonus conditionnels doivent être activés uniquement lorsque leur condition est remplie.
+
+Pour les sorts préparés, une fiche explicitement non préparée reste au grimoire. « Préparer une copie » crée une préparation indépendante ; « Lancer » consomme l’emplacement choisi et marque cette préparation utilisée. Les filtres séparent grimoire, sorts prêts et sorts utilisés. Les anciennes fiches sans indicateur de préparation restent compatibles. Les nombres de préparations autorisées et les restrictions d’école sont à vérifier par le joueur.
+
+Les PDF personnels déposés à la racine sont ignorés par Git et interdits via HTTP. Conserver les imports, sources et comptes rendus contenant des données de personnages dans `storage`, jamais dans le dépôt.

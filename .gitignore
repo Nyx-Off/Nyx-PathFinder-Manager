@@ -6,3 +6,6 @@
 /vendor/
 __pycache__/
 *.pyc
+
+# Documents personnels déposés pour import
+/*.pdf

@@ -42,6 +42,9 @@ final class Validator
                 throw new \DomainException('Champ invalide.', 422);
             }
         }
+        if (isset($d['capacity']) && (!is_numeric($d['capacity']) || $d['capacity'] < 0 || $d['capacity'] > 100000)) {
+            throw new \DomainException('Capacité invalide.', 422);
+        }
         if (isset($d['bulk']) && (!is_numeric($d['bulk']) || $d['bulk'] < 0 || $d['bulk'] > 100000)) {
             throw new \DomainException('Encombrement invalide.', 422);
         }
@@ -56,7 +59,7 @@ final class Validator
                 $d[$key] = self::text((string)$d[$key], (int)$match[1]);
             }
         }
-        foreach (['equipped','invested','consumable','prepared','used','active','ranged','attack'] as $key) {
+        foreach (['equipped','invested','consumable','prepared','used','active','ranged','attack','extradimensional','requires_investment'] as $key) {
             if (isset($d[$key]) && !in_array($d[$key], [true,false,0,1], true)) {
                 throw new \DomainException('Champ booléen invalide.', 422);
             }

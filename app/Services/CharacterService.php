@@ -84,6 +84,9 @@ final class CharacterService
         }
         $sd = $spell['data'];
         $casting = $sd['casting'] ?? 'prepared';
+        if ($casting === 'prepared' && array_key_exists('prepared', $sd) && !$sd['prepared']) {
+            throw new \DomainException('Ce sort est dans le grimoire. Préparez-le avant de le lancer.', 422);
+        }
         if ($casting === 'focus') {
             if ($c['focus'] < 1) {
                 throw new \DomainException('Aucun point de focus.', 422);

@@ -14,3 +14,10 @@ Comptes, personnages et identifiants de test supprimés après vérification. Ca
 Limites de validation : pas de certification exhaustive de toutes les règles/classes/variantes Pathfinder. Les restrictions de contenu et automatismes partiels sont détaillés dans README.md.
 
 Après configuration du mot de passe par le propriétaire : migration SQLite → MySQL vérifiée, 27 tests HTTP et sept parcours navigateur repassés sur MySQL, portraits revérifiés, tables uniformisées en utf8mb4 et sauvegarde SQL créée.
+
+Validation des améliorations d’inventaire et de préparation :
+
+- 45 assertions métier : ajout de cas sur les bonus liés aux objets investis, le rangement, les sacs extradimensionnels pleins/inconnus, la validation des capacités et le refus de lancer un sort non préparé.
+- 27 assertions HTTP repassées sur MySQL ; un PDF personnel à la racine renvoie également HTTP 403.
+- Parcours Chromium étendu : champs d’inventaire conditionnels, préparation d’une copie de sort et combinaison des filtres de recherche/préparation, en plus des parcours existants.
+- Une copie privée d’une fiche volumineuse a été exportée/réimportée : statistiques, attributs, PV, DD et encombrement identiques. Aucun contenu personnel n’est inclus dans les tests versionnés.
